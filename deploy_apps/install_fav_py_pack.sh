@@ -28,6 +28,16 @@ install_user_deps() {
   # So Python version confliction problem is solved
   # NOTE: we should 
   pip install uv
+  uv tool install ranger-fm
+  # NOTE: ranger hardcode to disable preview for root users, so we need to patch it
+  # # Fix: ranger disables preview for root users by default, patch it to allow previews
+  # sed -i "s/        if fm.username == 'root':/        if False:  # root preview enabled/" \
+  #   "$(python3 -c "import ranger; import os; print(os.path.dirname(ranger.__file__))")/core/main.py"
+  # # ranger's default rc.conf has preview_script commented out, explicitly enable it
+  # mkdir -p ~/.config/ranger
+  # ranger --copy-config=scope
+  # echo 'set preview_script ~/.config/ranger/scope.sh' >> ~/.config/ranger/rc.conf
+
   # all other commands are based on uvx
 
   # other favorite candidates
@@ -56,6 +66,7 @@ install_data_deps() {
 
 # Function to handle Jupyter setup
 setup_jupyter_nb() {
+  # 时代的眼泪：我现在不用这套方案了
   # Jupyter
   conda install -y notebook==6.4.12   # NOTE: Only the older version of jupyter supporting extensions.
   conda install -c conda-forge -y jupyter_contrib_nbextensions
@@ -133,9 +144,8 @@ main() {
   install_data_deps
   install_dev_deps
   install_openai_deps
-  setup_jupyter_nb
+  # setup_jupyter_nb
   setup_jupyter_asc
-  handle_deprecated_pkgs
   install_misc
 }
 

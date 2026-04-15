@@ -189,7 +189,7 @@
   Description = "python minimal install after create conda env"
   Output = ""
   Tag = []
-  command = "<cmd=|_pip install_||_uv pip install pip_|> ipdb ipython neovim fire yapf pylint black uv"
+  command = "<cmd=|_pip install_||_uv pip install pip_|> ipdb ipython neovim fire yapf pylint black uv ranger-fm"
 
 [[Snippets]]
   Description = "conda remove"
@@ -447,13 +447,13 @@
   Description = "from sys to tmux clipboard"
   Output = ""
   Tag = []
-  command = "xsel --clipboard --output | tmux load-buffer -w -"
+  command = "eval export $(tmux show-env DISPLAY 2>/dev/null); xsel --clipboard --output | tmux load-buffer -w -"
 
 [[Snippets]]
   Description = "from tmux to sys clipboard"
   Output = ""
   Tag = []
-  command = "tmux save-buffer - | xsel --clipboard --input"
+  command = "eval export $(tmux show-env DISPLAY 2>/dev/null); tmux save-buffer - | xsel --clipboard --input"
 
 [[Snippets]]
   Description = "git log for orphan commits"
@@ -669,13 +669,13 @@
   Description = "creating a mirror window for a session."
   Output = ""
   Tag = []
-  command = "SESSION=$(tmux list-sessions -F '#S' | fzf) && if [ -n \"$SESSION\" ]; then tmux new-session -d -t \"$SESSION\" -s \"$SESSION-<session_name_suffix=|_mirror_|>\" && tmux switch-client -t \"$SESSION-<session_name_suffix=|_mirror_|>\" ; fi"
+  command = "SESSION=$(tmux list-sessions -F '#S' | fzf) && if [ -n \"$SESSION\" ]; then tmux new-session -d -t \"$SESSION\" -s \"$SESSION-<session_name_suffix=|_mirror_|>\" ; tmux switch-client -t \"$SESSION-<session_name_suffix=|_mirror_|>\" ; fi"
 
 [[Snippets]]
   Description = "Config Tmux AI tool"
   Output = ""
   Tag = []
-  command = "tmux set-env -g TMUX_AI_TOOL <tool=|_codex_||_gemini_|>"
+  command = "tmux set-env -g TMUX_AI_TOOL <tool=|_codex_||_gemini_||_claude_|>"
 
 [[Snippets]]
   Description = "last git commit url"
@@ -688,3 +688,15 @@
   Output = ""
   Tag = []
   command = "/mnt/c/Users/xiaoyang/OneDrive/APP/marktext-x64-win/MarkText.exe chat.md"
+
+[[Snippets]]
+  Description = "test/check if we cross the GFW"
+  Output = ""
+  Tag = []
+  command = "curl -I https://www.google.com"
+
+[[Snippets]]
+  Description = "test/check X forward's clipboard"
+  Output = ""
+  Tag = []
+  command = "eval export $(tmux show-env DISPLAY 2>/dev/null); xclip -out -selection clipboard"

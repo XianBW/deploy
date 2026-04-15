@@ -73,6 +73,18 @@ EOF
     # antigen bundle zsh-users/zsh-syntax-highlighting
     antigen apply
 
+    OMZ_GIT_PLUGIN_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/oh-my-zsh/plugins/git"
+    OMZ_GIT_PLUGIN_FILE="$OMZ_GIT_PLUGIN_DIR/git.plugin.zsh"
+    OMZ_GIT_PLUGIN_URL="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/git/git.plugin.zsh"
+    # Reuse oh-my-zsh's git aliases/functions without depending on the full framework.
+    if [ ! -f "$OMZ_GIT_PLUGIN_FILE" ]; then
+        mkdir -p "$OMZ_GIT_PLUGIN_DIR"
+        curl -fsSL "$OMZ_GIT_PLUGIN_URL" -o "$OMZ_GIT_PLUGIN_FILE.tmp" && mv "$OMZ_GIT_PLUGIN_FILE.tmp" "$OMZ_GIT_PLUGIN_FILE"
+    fi
+    if [ -f "$OMZ_GIT_PLUGIN_FILE" ]; then
+        source "$OMZ_GIT_PLUGIN_FILE"
+    fi
+
     # 后面遇到问题是不是用 zplug可以替代
 
     # DEBUG:
@@ -145,14 +157,15 @@ EOF
         enable-fzf-tab
 
         # 有时候光有 zvm_after_lazy_keybindings 似乎也不work
-        zvm_bindkey viins '^S^L' insert-last-word
+        zvm_bindkey viins '^[l' insert-last-word
     }
 
     function zvm_after_lazy_keybindings() {
         # 这个按键绑定在 zvm 上不work
         # bindkey -M viins '\e.' insert-last-word
         # - 一般的shell中的就是 ESC + .
-        zvm_bindkey viins '^S^L' insert-last-word
+        # NOTE: ^S^L 不work，因为终端 ixon 流控制会拦截 ^S（stty -ixon 也无效）
+        zvm_bindkey viins '^[l' insert-last-word
     }
     # Allow autosuggestions to partially accept with forward-word
     export ZSH_AUTOSUGGEST_PARTIAL_ACCEPT_WIDGETS=(forward-word)
@@ -172,6 +185,21 @@ EOF
     zstyle ':completion:*:*:-command-:*:*' matcher-list 'm:{a-z}={A-Z}' 'r:|[._-_-]=* r:|=*' 'l:|=* r:|=*'
 
     source <(fzf --zsh)
+
+    # Auto-refresh DISPLAY from tmux session env on each prompt.
+    # When SSH reconnects, tmux updates its session-level DISPLAY (via
+    # update-environment) on attach, but existing shells keep the stale value.
+    # This hook keeps every pane in sync so xclip/X11 tools keep working.
+    if [ -n "$TMUX" ]; then
+        function _refresh_tmux_display() {
+            local new_display
+            new_display=$(tmux show-environment DISPLAY 2>/dev/null | sed -n 's/^DISPLAY=//p')
+            if [ -n "$new_display" ] && [ "$new_display" != "$DISPLAY" ]; then
+                export DISPLAY="$new_display"
+            fi
+        }
+        precmd_functions+=(_refresh_tmux_display)
+    fi
 fi
 
 
@@ -182,12 +210,12 @@ fi
 
 # # Outlines: Common config
 
+source "$HOME/deploy/configs/shell/env.sh"
+
 alias gitlog="git log --all --oneline --graph --decorate"
 alias gitlogs="git log --all --pretty=short --abbrev-commit --graph --decorate"
 alias mux=tmuxinator
 alias mx=tmux
-export PATH="$HOME/deploy/helper_scripts/bin/:$HOME/bin/:$HOME/apps/nodejs/bin/:$HOME/.luarocks/bin/:$PATH"
-export PATH="$PATH:$HOME/.local/bin"  # this is for pipx
 export MANPATH="$HOME/.local/share/man/:$MANPATH"
 export EDITOR=`which vim`
 # sudo -E will keep the environment when run sudo. Many env variables like http_proxy need it.
@@ -215,7 +243,7 @@ function proxy_down() {
 
 # NOTE: add a function to check if we need proxy by testing connectivity
 function proxy_check() {
-    local test_url=${1:-https://x.com}
+    local test_url=${1:-https://www.google.com}
     # timeout 3 seconds; if failed, we may need proxy
     if curl -Is --max-time 3 "$test_url" >/dev/null 2>&1; then
         echo "Network OK. Proxy not needed."
@@ -234,7 +262,7 @@ alias pyprof='python -m cProfile -o stats_out'
 alias ipify="curl cip.cc"
 # using this alias name  because the previous tool is ipify
 
-# gemini with proxy (p) — auto-detect: if proxy needed, wrap with proxychains, else run normally
+# run with proxy (p) — auto-detect: if proxy needed, wrap with proxychains, else run normally
 function myp() {
     if proxy_check >/dev/null 2>&1; then
         "$@"
@@ -243,30 +271,117 @@ function myp() {
     fi
 }
 
-# gemini with (r)ename — unified runner
+# Per-tool proxy defaults: "on" (always proxychains) | "off" (always direct) | "auto" (detect)
+export MYPROXY_GEMINI=${MYPROXY_GEMINI:-auto}
+export MYPROXY_CLAUDE=${MYPROXY_CLAUDE:-off}
+export MYPROXY_CODEX=${MYPROXY_CODEX:-off}
+
+function _myp_run() {
+    local mode="$1"; shift
+    case "$mode" in
+        on)  proxychains -q "$@" ;;
+        off) "$@" ;;
+        *)   myp "$@" ;;
+    esac
+}
+
+# unified runner with tmux rename; args: title proxy_mode cmd...
 function _with_tmux_rename() {
     local title="$1"
-    shift
+    local proxy_mode="$2"
+    shift 2
     if [ -n "$TMUX" ]; then
         local prev_name
         prev_name=$(tmux display-message -p "#W")
         tmux rename-window -t "$TMUX_PANE" "$title"
-        myp "$@"
+        _myp_run "$proxy_mode" "$@"
         tmux rename-window -t "$TMUX_PANE" "$prev_name"
     else
-        myp "$@"
+        _myp_run "$proxy_mode" "$@"
     fi
 }
 
 # gemini with rename
 function geminir() {
-    _with_tmux_rename gemini gemini "$@"
+    _with_tmux_rename gemini "$MYPROXY_GEMINI" gemini "$@"
 }
 
 # codex with rename
 function codexr() {
+    # run codex auto
     # _with_tmux_rename codex codex --dangerously-bypass-approvals-and-sandbox "$@"
-    AZURE_OPENAI_API_KEY=$(get-cred key gpt.gpg) _with_tmux_rename codex codex "$@"
+    if [[ "${PWD:l}" != *obsidian* ]]; then
+        codexyz "$@"
+    else
+        codexa "$@"
+    fi
+}
+
+_codex_auto_flag() {
+    if [[ "$(uname)" == "Linux" ]]; then
+        echo "--dangerously-bypass-approvals-and-sandbox"
+    else
+        echo "--full-auto"
+    fi
+}
+
+_codex_env() {
+    NODE_TLS_REJECT_UNAUTHORIZED=0 \
+    AZURE_OPENAI_API_KEY=$(get-cred key gpt.gpg) \
+    XYZ_API_KEY=$(get-cred xyz_key gpt.gpg) \
+    "$@"
+}
+
+_codex_run() {
+    local title="$1"
+    shift
+    local auto_flag
+    auto_flag=$(_codex_auto_flag)
+    _codex_env _with_tmux_rename "$title" "$MYPROXY_CODEX" codex "$auto_flag" "$@"
+}
+
+function codexa() {
+    # run my azure codex
+    _codex_run codex "$@"
+}
+
+function codexyz() {
+    _codex_run codex-xyz -c 'model_provider="xyz"' "$@"
+}
+
+function codextmp() {
+    # run my azure codex
+    _codex_run codex-tmp "$@"
+}
+
+function c() {
+    "$HOME/deploy/helper_scripts/bin/c" "$@"
+}
+function v() {
+    "$HOME/deploy/helper_scripts/bin/v" "$@"
+}
+
+_claude_env() {
+    ANTHROPIC_BASE_URL='https://xyzlapi.boyuerichdata.com' \
+    ANTHROPIC_AUTH_TOKEN=$(get-cred xyz_key gpt.gpg) \
+    CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 \
+    "$@"
+}
+
+function claudeauto() {
+    _claude_env _with_tmux_rename claude "$MYPROXY_CLAUDE" claude --enable-auto-mode "$@"
+}
+
+function claudeyolo() {
+    IS_SANDBOX=1 _claude_env _with_tmux_rename claude "$MYPROXY_CLAUDE" claude --dangerously-skip-permissions "$@"
+}
+
+function clauder() {
+    if [[ "$(uname)" == "Linux" ]]; then
+        claudeyolo "$@"
+    else
+        claudeauto "$@"
+    fi
 }
 
 # for fzf
@@ -371,8 +486,11 @@ alias copier="uvx copier"
 
 # ## Outlines: ranger
 # ranger的安装依赖  deploy_apps/install_fav_py_pack.sh
-alias .r=". ranger"
-alias ranger='if [ -n "$TMUX" ]; then prev_name=$(tmux display-message -p "#W"); tmux rename-window -t "$TMUX_PANE" ranger; command uvx --from ranger-fm ranger ; tmux rename-window -t "$TMUX_PANE" "$prev_name"; else command ranger; fi'  # if inside tmux, rename to 'ranger', run it, then restore name
+# NOTE: ranger 直接通过 uvx 启动会有BUG(它依赖了一些非python的包？)
+# alias .r=". ranger"
+# alias ranger='if [ -n "$TMUX" ]; then prev_name=$(tmux display-message -p "#W"); tmux rename-window -t "$TMUX_PANE" ranger; command uvx --from ranger-fm ranger ; tmux rename-window -t "$TMUX_PANE" "$prev_name"; else command ranger; fi'  # if inside tmux, rename to 'ranger', run it, then restore name
+alias ranger='if [ -n "$TMUX" ]; then prev_name=$(tmux display-message -p "#W"); tmux rename-window -t "$TMUX_PANE" ranger-$(basename "$PWD"
+); command ranger ; tmux rename-window -t "$TMUX_PANE" "$prev_name"; else command ranger; fi'  # if inside tmux, rename to 'ranger', run it, then restore name
 # 其他
 # -快捷键篇
 #   - r: 可以open_with调用当前文件，1是less/pager
@@ -487,7 +605,6 @@ export AIDER_GITIGNORE=False
 # export LC_ALL=en_US.UTF-8
 # export LANGUAGE=en_US:en
 # export TERM=xterm-256color
-
 
 # # Outlines: 准备删掉的
 

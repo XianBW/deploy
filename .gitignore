@@ -6,8 +6,13 @@ configs/lazynvim/LICENSE
 configs/lazynvim/lazy-lock.json
 configs/lazynvim/.neoconf.json
 configs/lazynvim/.luarc.json
+configs/llm/skills/.system
+configs/llm/external
 *.pyc
+*.zwc
 tools.py/watcher/watcher/*.json
 log/
 .aider*
 .env
+
+configs/llm/merged-skills/
